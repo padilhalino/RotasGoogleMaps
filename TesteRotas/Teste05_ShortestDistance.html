@@ -1,0 +1,207 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <title>Place Autocomplete</title>
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+  <meta charset="utf-8">
+  <script src="Scripts/jquery-1.10.2.min.js"></script>
+  <style>
+    /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+    #map {
+      height: 100%;
+    }
+
+    /* Optional: Makes the sample page fill the window. */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    .controls {
+      border: 1px solid transparent;
+      border-radius: 2px 0 0 2px;
+      box-sizing: border-box;
+      -moz-box-sizing: border-box;
+      outline: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .text-input {
+      height: 32px;
+      background-color: #fff;
+      font-family: Roboto;
+      font-size: 15px;
+      font-weight: 300;
+      padding: 0 11px 0 13px;
+      margin-bottom: 5px;
+      text-overflow: ellipsis;
+      width: 200px;
+    }
+
+    #origin-input:focus,
+    #destination-input:focus {
+      border-color: #4d90fe;
+    }
+
+    .options {
+      position: absolute;
+      z-index: 2;
+    }
+
+    #address-selector {
+      color: #fff;
+      /*background-color: #4d90fe;*/
+      margin-top: 10px;
+      margin-left: 12px;
+      padding: 11px 11px 6px 11px;
+      height: auto;
+    }
+
+    #address-selector label {
+      font-family: Roboto;
+      font-size: 13px;
+      font-weight: 300;
+    }
+
+    #address-selector input[type=text] {
+      
+    }
+
+    #btnAdd {
+      margin-left: 23px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="options">
+    <div id="address-selector">
+      <input id="text-input1" class="controls text-input" type="text" placeholder="Escolher destino"><br />
+      <input id="text-input2" class="controls text-input" type="text" placeholder="Escolher destino">
+    </div>
+    <input id="btnAdd" class="controls" type="button" value="+" />
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_KEY&region=br&libraries=places&callback=initMap"
+          async defer></script>
+  
+  <script>
+    var shortestDistance = function () {
+      var directionsDisplay;
+      var directionsService = new google.maps.DirectionsService();
+      var map;
+      var size = 0;
+      var currentPosition;
+
+      // An array of interesting places we want to potentially visit.
+      var interestingPlaces = [
+      { 'title': 'Regents Park', 'latLng': new google.maps.LatLng(51.530686, -0.154753) },
+      { 'title': 'Hyde Park', 'latLng': new google.maps.LatLng(51.507293, -0.164022) },
+      { 'title': 'Green Park', 'latLng': new google.maps.LatLng(51.504088, -0.141706) },
+      { 'title': 'Regents Park', 'latLng': new google.maps.LatLng(51.479185, -0.159903) }
+      ];
+
+      // An array to store results from Google routing API.
+      var routeResults = [];
+
+
+      // Call this upon page load to set everything in motion!
+      function initialize(currentLat, currentLng) {
+        currentPosition = new google.maps.LatLng(currentLat, currentLng);
+        directionsDisplay = new google.maps.DirectionsRenderer();
+        var mapOptions = {
+          zoom: 13,
+          center: currentPosition
+        };
+        map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+        directionsDisplay.setMap(map);
+
+        var marker = new google.maps.Marker({
+          position: currentPosition,
+          map: map,
+          title: 'Currrently location.'
+        });
+
+        var i = interestingPlaces.length;
+        while (i--) {
+          interestingPlaces[i].marker = new google.maps.Marker({
+            position: interestingPlaces[i].latLng,
+            map: map,
+            title: interestingPlaces[i].title,
+            icon: 'http://maps.google.com/mapfiles/ms/icons/green.png'
+          });
+        }
+
+        findNearestPlace();
+      }
+
+
+      // Loops through all inteesting places to calculate route between our current position
+      // and that place.
+      function findNearestPlace() {
+        var i = interestingPlaces.length;
+        size = interestingPlaces.length;
+        routeResults = [];
+        while (i--) {
+          calcRoute(interestingPlaces[i].latLng, storeResult);
+        }
+      }
+
+
+      // A function to calculate the route between our current position and some desired end point.
+      function calcRoute(end, callback) {
+        var request = {
+          origin: currentPosition,
+          destination: end,
+          travelMode: google.maps.TravelMode.DRIVING
+        };
+        directionsService.route(request, function (response, status) {
+          if (status == google.maps.DirectionsStatus.OK) {
+            callback(response);
+          } else {
+            size--;
+          }
+        });
+      }
+
+
+      // Stores a routing result from the API in our global array for routes.
+      function storeResult(data) {
+        routeResults.push(data);
+        if (routeResults.length === size) {
+          findShortest();
+        }
+      }
+
+
+      // Goes through all routes stored and finds which one is the shortest. It then
+      // sets the shortest route on the map for the user to see.
+      function findShortest() {
+        var i = routeResults.length;
+        var shortestIndex = 0;
+        var shortestLength = routeResults[0].routes[0].legs[0].distance.value;
+
+        while (i--) {
+          if (routeResults[i].routes[0].legs[0].distance.value < shortestLength) {
+            shortestIndex = i;
+            shortestLength = routeResults[i].routes[0].legs[0].distance.value;
+          }
+        }
+        directionsDisplay.setDirections(routeResults[shortestIndex]);
+      }
+
+      // Expose the initialize function publicly as "init".
+      return {
+        init: initialize
+      };
+    }();
+
+    // Upon page load, lets start the process!
+    //google.maps.event.addDomListener(window, 'load', shortestDistance.init(51.489554, -0.12969));
+  </script>
+</body>
+</html>

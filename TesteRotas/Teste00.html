@@ -1,0 +1,400 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <title>Place Autocomplete</title>
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+  <meta charset="utf-8">
+  <script src="Scripts/jquery-1.10.2.min.js"></script>
+  <style>
+    /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+    #map {
+      height: 100%;
+    }
+
+    /* Optional: Makes the sample page fill the window. */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    .controls {
+      border: 1px solid transparent;
+      border-radius: 2px 0 0 2px;
+      box-sizing: border-box;
+      -moz-box-sizing: border-box;
+      outline: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .text-input {
+      height: 32px;
+      background-color: #fff;
+      font-family: Roboto;
+      font-size: 15px;
+      font-weight: 300;
+      padding: 0 11px 0 13px;
+      margin-bottom: 5px;
+      text-overflow: ellipsis;
+      width: 200px;
+    }
+
+    #origin-input:focus,
+    #destination-input:focus {
+      border-color: #4d90fe;
+    }
+
+    .options {
+      position: absolute;
+      z-index: 2;
+      top: 80px;
+      background-color: #0093DD;
+      padding-top: 5px;
+      padding-bottom: 5px;
+      text-align: center;
+    }
+
+    #divEscolherRota {
+      margin-left: 12px;
+      color: #fff;
+    }
+
+    #address-selector {
+      color: #fff;
+      /*background-color: #4d90fe;*/
+      margin-top: 0px;
+      /*margin-left: 12px;*/
+      padding: 11px 11px 6px 11px;
+      height: auto;
+    }
+
+      #address-selector label {
+        font-family: Roboto;
+        font-size: 13px;
+        font-weight: 300;
+      }
+
+      #address-selector input[type=text] {
+      }
+
+    #btnAdd {
+      margin-left: 23px;
+      margin-right: 15px;
+      height: 32px;
+      width: 32px;
+      line-height: 32px;
+      text-align: center;
+      font-weight: 700;
+      float: right;
+    }
+
+    .icon-remover {
+      height: 32px;
+      width: 32px;
+      line-height: 32px;
+      text-align: center;
+      background-color: #FF0000;
+      color: #fff;
+      font-weight: 700;
+      margin-left: 10px;
+      float: right;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="options">
+    <div id="divEscolherRota">
+      <input id="rotaMaisCurta" name="escolherRota" type="radio" checked="checked" onchange="Route();" /> Mais curta
+      <input id="rotaMaisRapida" name="escolherRota" type="radio" onchange="Route();" /> Mais rápida
+    </div>
+    <div id="divEscolherRota">
+      <input id="otimizar" type="checkbox" onchange="Route();" /> Otimizar
+    </div>
+    <div id="address-selector">
+      <div class="item-filtro">
+        <input id="text-input1" class="controls text-input" type="text" placeholder="Escolher destino">
+      </div>
+      <div class="item-filtro">
+        <input id="text-input2" class="controls text-input" type="text" placeholder="Escolher destino">
+      </div>
+    </div>
+    <input id="btnAdd" class="controls" type="button" value="+" />
+    <a onclick="RemoverInput()"><div class="controls icon-remover">X</div></a>
+    <!--<input id="btnClear" class="controls" type="button" value="Clear" onclick="ClearRoutes();" />-->
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_KEY&region=br&libraries=places&callback=initMap"
+          async defer></script>
+
+  <script>
+    var places = [];
+    var map;
+    var directionsService
+    var directionsDisplay = [];
+    var originPlaceId = null;
+    var destinationPlaceId = null;
+    var allPlaces = [];
+    var optimizeWaypoints = false;
+    var routesResponses = [];
+    var markers = [];
+    var shortestIndexes = [];
+    var fastestIndexes = [];
+    var shortests = [];
+    var fastests = [];
+
+    $('#btnAdd').click(function () {
+      var next = $('.text-input').length + 1;
+      $('#address-selector').append('<div id="item-filtro' + next + '" class="item-filtro">' +
+        '<input id="text-input' + next + '" class="controls text-input" type="text" placeholder="Escolher destino">' +
+        '<div>');
+      AddListener(next);
+    });
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        mapTypeControl: false,
+        center: {lat: -25.423396, lng: -49.265470},
+        zoom: 13
+      });
+
+      AddListener(1);
+      AddListener(2);
+    }
+
+    function AddListener(i) {
+      var input = document.getElementById('text-input' + i);
+      //var autocomplete = new google.maps.places.Autocomplete(input, { placeIdOnly: true });
+      var autocomplete = new google.maps.places.Autocomplete(input, { placeIdOnly: false });
+      autocomplete.bindTo('bounds', map);
+      autocomplete.addListener('place_changed', function () {
+        var place = autocomplete.getPlace();
+        if (!place.place_id) {
+          window.alert("Por favor selecione uma opção na lista.");
+          return;
+        } else {
+          places[i - 1] = place;
+        }
+
+        Route();
+      });
+    }
+
+    function Route() {
+
+      if (!places[0] || !places[1]) {
+        return;
+      }
+
+      allPlaces = [];
+      optimizeWaypoints = false;
+      routesResponses = [];
+
+      for (var i = 0; i < places.length; i++) {
+        if (places[i]) {
+          allPlaces[i] = places[i];
+        }
+      }
+
+      if (document.getElementById("otimizar").checked) {
+        optimizeWaypoints = true;
+      }
+
+      if (!directionsService) {
+        directionsService = new google.maps.DirectionsService;
+      }
+
+      for (var i = 0; i < directionsDisplay.length; i++) {
+        // Limpa rota atual
+        directionsDisplay[i].setMap(null);
+      }
+
+      directionsDisplay = [];
+      
+      if (optimizeWaypoints) {
+        routesResponses = [];
+        shortestIndexes = [];
+        fastestIndexes = [];
+        shortests = [];
+        fastests = [];
+
+        //TODO: não alterar último ponto, só os do meio
+        RouteTrecho(0, 1, false);
+      } else {
+        RouteTrecho(0, 1, true);
+        routesResponses = [];
+        CustomMarkers();
+      }
+    }
+
+    function RouteTrecho(ini, fim, desenha) {
+
+      this.travelMode = 'DRIVING';
+
+      originPlaceId = allPlaces[ini].place_id;
+      destinationPlaceId = allPlaces[fim].place_id;
+      if (desenha) {
+        routesResponses = [];
+      }
+      
+      directionsService.route({
+        origin: { 'placeId': originPlaceId },
+        destination: { 'placeId': destinationPlaceId },
+        provideRouteAlternatives: true,
+        travelMode: this.travelMode
+        //,optimizeWaypoints: optimizeWaypoints
+      }, function (response, status) {
+        if (status === 'OK') {
+          routesResponses.push(response);
+        } else {
+          window.alert('Directions request failed due to ' + status);
+        }
+
+        // Results analysis
+        var rota = routesResponses.length - 1;
+        var i = routesResponses[rota].routes.length;
+        shortestIndexes[rota] = 0;
+        fastestIndexes[rota] = 0;
+        shortests[rota] = routesResponses[rota].routes[0].legs[0].distance.value;
+        fastests[rota] = routesResponses[rota].routes[0].legs[0].duration.value;
+
+        while (i--) {
+          if (routesResponses[rota].routes[i].legs[0].distance.value < shortests[rota]) {
+            shortestIndexes[rota] = i;
+            shortests[rota] = routesResponses[rota].routes[i].legs[0].distance.value;
+          }
+          if (routesResponses[rota].routes[i].legs[0].duration.value < fastests[rota]) {
+            fastestIndexes[rota] = i;
+            fastests[rota] = routesResponses[rota].routes[i].legs[0].duration.value;
+          }
+        }
+
+        if (desenha) {
+          var routeIndex = shortestIndexes[rota];
+          if (document.getElementById("rotaMaisRapida").checked) {
+            routeIndex = fastestIndexes[rota];
+          }
+
+          DesenharRota(ini, routesResponses[rota], routeIndex);
+
+          if (allPlaces.length > (fim + 1)) {
+            RouteTrecho(fim, fim + 1, true); // Continua
+          }
+        }
+        else {
+
+          if (allPlaces.length > (fim + 1)) {
+            RouteTrecho(ini, fim + 1, false);
+          }
+          else {
+            var rou = routesResponses.length;
+            var shortestIndex = 0;
+            var fastestIndex = 0;
+            var shortest = shortests[0];
+            var fastest = fastests[0];
+
+            while (rou--) {
+              if (shortests[rou] < shortest) {
+                shortestIndex = rou;
+                shortest = shortests[rou];
+              }
+              if (fastests[rou] < fastest) {
+                fastestIndex = rou;
+                fastest = fastests[rou];
+              }
+            }
+
+            // Desenha o trecho 
+            if (document.getElementById("rotaMaisRapida").checked) {
+              DesenharRota(ini, routesResponses[fastestIndex], fastestIndexes[fastestIndex]);
+            } else {
+              DesenharRota(ini, routesResponses[shortestIndex], shortestIndexes[shortestIndex]);
+            }
+
+            routesResponses = [];
+            shortestIndexes = [];
+            fastestIndexes = [];
+            shortests = [];
+            fastests = [];
+
+            if (allPlaces.length > (ini + 2)) {
+              if (document.getElementById("rotaMaisRapida").checked) {
+                ReorganizarPlaces(ini, fastestIndex + ini + 1);
+              } else {
+                ReorganizarPlaces(ini, shortestIndex + ini + 1);
+              }
+
+              RouteTrecho(ini + 1, ini + 2, false);
+            }
+            else {
+              CustomMarkers();
+              allPlaces = [];
+            }
+          }
+        }
+      });
+    }
+
+    function ReorganizarPlaces(start, move) {
+      var newPlaces = [];
+      for (var i = 0; i <= start; i++) {
+        newPlaces[i] = allPlaces[i];
+      }
+      newPlaces.push(allPlaces[move]);
+      allPlaces.splice(move, 1);
+      for (var i = start + 1; i < allPlaces.length; i++) {
+        newPlaces.push(allPlaces[i]);
+      }
+      allPlaces = newPlaces;
+    }
+
+    function DesenharRota(i, routesResponse, routeIndex) {
+      // Desenha a rota
+      directionsDisplay[i] = new google.maps.DirectionsRenderer({
+        map: map,
+        directions: routesResponse,
+        routeIndex: routeIndex
+      });
+
+      directionsDisplay[i].setOptions({ suppressMarkers: true });
+    }
+
+    function RemoverInput(i) {
+      $('#item-filtro' + i).remove();
+      places[i - 1] = null;
+    }
+
+    function RemoverInput() {
+      var i = $('.text-input').length;
+      $('#item-filtro' + i).remove();
+      places[i - 1] = null;
+      Route();
+    }
+
+    function CustomMarkers() {
+
+      var labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+      for (var i = 0; i < markers.length; i++) {
+        markers[i].setMap(null);
+      }
+      //markers.length = 0;
+      markers = [];
+      
+      for (var i = 0; i < allPlaces.length; i++) {
+        var p = allPlaces[i];
+        markers[i] = new google.maps.Marker({
+          position: { lat: allPlaces[i].geometry.location.lat(), lng: allPlaces[i].geometry.location.lng() },
+          map: map,
+          //icon: markerImage,
+          label: labels.charAt(i),
+          title: 'Hello World!'
+        });
+      }
+    }
+  </script>
+</body>
+</html>
